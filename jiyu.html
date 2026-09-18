@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>비행기 게임 - 1단계</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            min-height: 100dvh;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* 세로로 긴 게임 화면 스타일 (모바일 화면 꽉 참 최적화) */
+        .game-screen {
+            width: 100vw;
+            height: 100dvh;
+            max-width: 440px;
+            max-height: 850px;
+            background-color: #030712;
+            border: 3px solid #1e293b;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            align-items: center;
+            touch-action: none;
+        }
+
+        /* 모바일 모드: 테두리를 없애고 화면 전체 세로형 채움 */
+        @media (max-width: 480px) {
+            .game-screen {
+                width: 100vw;
+                height: 100dvh;
+                max-width: 100vw;
+                max-height: 100dvh;
+                border-radius: 0;
+                border: none;
+            }
+        }
+
+        /* 비행기 위치 조절 (하단 중앙) */
+        .player-airplane {
+            position: absolute;
+            width: 110px;
+            height: 110px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+
+        .bullet {
+            position: absolute;
+            width: 6px;
+            height: 18px;
+            background-color: #facc15;
+            border-radius: 4px;
+            box-shadow: 0 0 8px #fef08a;
+            pointer-events: none;
+        }
+
+        .enemy {
+            position: absolute;
+            width: 75px;
+            height: 95px;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        /* 게임 오버 화면 오버레이 스타일 */
+        .game-over-screen {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(3, 7, 18, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+            color: #ffffff;
+            font-weight: bold;
+        }
+
+        .game-over-screen.hidden {
+            display: none;
+        }
+
+        /* 터치 조작 컨트롤러 스타일 */
+        .touch-controls {
+            position: absolute;
+            bottom: 12px;
+            left: 0;
+            right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 0 16px;
+            z-index: 20;
+            pointer-events: none; /* 컨테이너 자체는 클릭 투과 */
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .touch-btn {
+            pointer-events: auto;
+            background: rgba(30, 41, 59, 0.7);
+            border: 2px solid rgba(148, 163, 184, 0.4);
+            color: #ffffff;
+            backdrop-filter: blur(4px);
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            touch-action: manipulation;
+            transition: background 0.1s, transform 0.1s;
+        }
+
+        .touch-btn:active, .touch-btn.pressed {
+            background: rgba(56, 189, 248, 0.5);
+            transform: scale(0.92);
+        }
+
+        .dpad-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 44px);
+            grid-template-rows: repeat(3, 44px);
+            gap: 4px;
+        }
+
+        .fire-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: rgba(220, 38, 38, 0.75);
+            border: 3px solid rgba(248, 113, 113, 0.6);
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.5);
+            font-size: 16px;
+            color: #ffffff;
+        }
+
+        .fire-btn:active, .fire-btn.pressed {
+            background: rgba(239, 68, 68, 0.9);
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="game-screen" id="gameScreen">
+        
+        <!-- 점수 표시판 (우측 상단 텍스트 제거 및 숫자만 표시) -->
+        <div id="scoreBoard" class="absolute top-4 right-4 text-xl font-bold text-yellow-400 z-10 select-none bg-slate-900/80 px-3 py-1 rounded-lg border border-slate-700">
+            <span id="scoreText">0</span>
+        </div>
+
+        <!-- 모바일 터치 컨트롤러 추가 -->
+        <div class="touch-controls">
+            <!-- 방향키 (D-Pad) -->
+            <div class="dpad-grid">
+                <div></div>
+                <button id="btnUp" class="touch-btn">▲</button>
+                <div></div>
+                <button id="btnLeft" class="touch-btn">◄</button>
+                <div></div>
+                <button id="btnRight" class="touch-btn">►</button>
+                <div></div>
+                <button id="btnDown" class="touch-btn">▼</button>
+                <div></div>
+            </div>
+
+            <!-- 발사 버튼 -->
+            <button id="btnFire" class="touch-btn fire-btn">발사</button>
+        </div>
+
+        <!-- 게임 오버 오버레이 -->
+        <!-- 게임 오버 오버레이 (설명 텍스트 제거) -->
+        <div class="game-over-screen hidden" id="gameOverScreen">
+            <h1 class="text-4xl text-red-500 mb-6 tracking-wider">GAME OVER</h1>
+            <button id="restartBtn" onclick="restartGame()" class="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg shadow-lg font-semibold transition">
+                다시 시작
+            </button>
+        </div>
+
+        <div class="player-airplane" id="playerAirplane">
+            <!-- 그림의 특유의 파란 색연필/크레파스 손그림 느낌을 살린 SVG 비행기 -->
+            <svg viewBox="0 0 100 100" width="100%" height="100%" filter="drop-shadow(0px 2px 8px rgba(56, 189, 248, 0.4))">
+                <defs>
+                    <!-- 거친 손그림 선 느낌 필터 -->
+                    <filter id="sketchFilter">
+                        <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="3" result="noise" />
+                        <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" />
+                    </filter>
+                </defs>
+
+                <g filter="url(#sketchFilter)">
+                    <!-- 중앙 세로 기체 축 및 꼬리 날개 -->
+                    <path d="M50 15 L50 85 M40 85 L60 85 M45 78 L55 78 M42 72 L58 72" 
+                          stroke="#38bdf8" stroke-width="4.5" stroke-linecap="round" fill="none" />
+                    
+                    <!-- 아래쪽 삼각 날개 구조 -->
+                    <path d="M50 55 L25 80 Q50 88 75 80 Z" 
+                          stroke="#0284c7" stroke-width="3" fill="#38bdf8" fill-opacity="0.4" stroke-linecap="round" />
+                    <path d="M30 76 L70 76 M35 70 L65 70" 
+                          stroke="#0284c7" stroke-width="2.5" opacity="0.8" />
+
+                    <!-- 메인 날개 (중앙 삼각 구조) -->
+                    <path d="M50 20 L15 58 Q50 68 85 58 Z" 
+                          stroke="#0284c7" stroke-width="4" fill="#38bdf8" fill-opacity="0.55" stroke-linecap="round" stroke-linejoin="round" />
+                    
+                    <!-- 색연필 칠한 질감 표현 (손그림 덧칠선들) -->
+                    <path d="M50 25 L25 52 M50 30 L32 54 M50 35 L40 56 M50 25 L75 52 M50 30 L68 54 M50 35 L60 56" 
+                          stroke="#0284c7" stroke-width="2" opacity="0.7" />
+                    <path d="M22 55 Q50 62 78 55" stroke="#0369a1" stroke-width="3" fill="none" />
+
+                    <!-- 날개 양쪽 동그라미/원 디테일 (그림 오른쪽 선들 표현) -->
+                    <circle cx="78" cy="48" r="3.5" fill="none" stroke="#38bdf8" stroke-width="2" />
+                    <circle cx="85" cy="52" r="2.5" fill="none" stroke="#38bdf8" stroke-width="2" />
+
+                    <!-- 비행기 상단 조종석/프로펠러 지지대 -->
+                    <path d="M45 20 L50 10 L55 20" stroke="#0284c7" stroke-width="3" fill="none" />
+                    <ellipse cx="50" cy="10" rx="9" ry="3" fill="#0284c7" />
+                </g>
+            </svg>
+        </div>
+
+    </div>
+
+    <script>
+        const gameScreen = document.getElementById('gameScreen');
+        const playerAirplane = document.getElementById('playerAirplane');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const scoreText = document.getElementById('scoreText');
+
+        let score = 0;
+
+        const airplaneWidth = 110;
+        const airplaneHeight = 110;
+
+        // 비행기 초기 위치 (하단 중앙)
+        let playerX = (gameScreen.clientWidth - airplaneWidth) / 2;
+        let playerY = gameScreen.clientHeight - airplaneHeight - 30;
+        const speed = 5;
+
+        let isGameOver = false;
+
+        // 눌린 키 상태 추적 및 총알 관리
+        const keys = {
+            ArrowUp: false,
+            ArrowDown: false,
+            ArrowLeft: false,
+            ArrowRight: false,
+            Space: false
+        };
+
+        const bullets = [];
+        const bulletSpeed = 8;
+        let lastShootTime = 0;
+        const shootInterval = 180; // 총알 연사 간격 (밀리초)
+
+        const enemies = [];
+        const enemyWidth = 75;
+        const enemyHeight = 95;
+        const enemySpeed = 2; // 적 이동 속도
+        let lastEnemySpawnTime = 0;
+        const spawnInterval = 2000; // 2초마다 새 적 생성
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key in keys || e.code === 'Space') {
+                if (e.code === 'Space') keys.Space = true;
+                if (e.key in keys) keys[e.key] = true;
+                e.preventDefault();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key in keys || e.code === 'Space') {
+                if (e.code === 'Space') keys.Space = false;
+                if (e.key in keys) keys[e.key] = false;
+                e.preventDefault();
+            }
+        });
+
+        // 터치 및 마우스 버튼 이벤트 등록
+        function setupTouchButton(buttonId, keyName) {
+            const btn = document.getElementById(buttonId);
+            if (!btn) return;
+
+            const press = (e) => {
+                e.preventDefault();
+                keys[keyName] = true;
+                btn.classList.add('pressed');
+            };
+
+            const release = (e) => {
+                e.preventDefault();
+                keys[keyName] = false;
+                btn.classList.remove('pressed');
+            };
+
+            btn.addEventListener('touchstart', press, { passive: false });
+            btn.addEventListener('touchend', release, { passive: false });
+            btn.addEventListener('touchcancel', release, { passive: false });
+            
+            btn.addEventListener('mousedown', press);
+            btn.addEventListener('mouseup', release);
+            btn.addEventListener('mouseleave', release);
+        }
+
+        setupTouchButton('btnUp', 'ArrowUp');
+        setupTouchButton('btnDown', 'ArrowDown');
+        setupTouchButton('btnLeft', 'ArrowLeft');
+        setupTouchButton('btnRight', 'ArrowRight');
+        setupTouchButton('btnFire', 'Space');
+
+        function createBullet() {
+            const bulletElem = document.createElement('div');
+            bulletElem.className = 'bullet';
+            
+            // 비행기 중앙 상단에서 생성
+            const bulletX = playerX + (airplaneWidth / 2) - 3;
+            const bulletY = playerY - 10;
+
+            bulletElem.style.left = `${bulletX}px`;
+            bulletElem.style.top = `${bulletY}px`;
+            gameScreen.appendChild(bulletElem);
+
+            bullets.push({
+                element: bulletElem,
+                x: bulletX,
+                y: bulletY,
+                width: 6,
+                height: 18
+            });
+        }
+
+        function createEnemy() {
+            const enemyElem = document.createElement('div');
+            enemyElem.className = 'enemy';
+            
+            // 화면 상단 무작위 X 위치 계산
+            const maxX = gameScreen.clientWidth - enemyWidth;
+            const enemyX = Math.floor(Math.random() * Math.max(0, maxX));
+            const enemyY = -enemyHeight;
+
+            // 첨부해 주신 손그림 '괴오박사' 특징을 살린 SVG
+            enemyElem.innerHTML = `
+                <svg viewBox="0 0 100 120" width="100%" height="100%" filter="drop-shadow(0px 3px 6px rgba(0,0,0,0.5))">
+                    <defs>
+                        <filter id="enemySketch">
+                            <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" result="noise"/>
+                            <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.5" xChannelSelector="R" yChannelSelector="G"/>
+                        </filter>
+                    </defs>
+                    <g filter="url(#enemySketch)">
+                        <!-- 귀 -->
+                        <polygon points="25,25 35,5 45,28" fill="#f97316" stroke="#451a03" stroke-width="2.5" />
+                        <polygon points="30,22 36,10 42,25" fill="#fef08a" />
+                        
+                        <!-- 모자 (보라색 모자) -->
+                        <path d="M52 18 L78 22 L72 3 L58 1" fill="#581c87" stroke="#3b0764" stroke-width="2.5" />
+                        <path d="M48 22 L82 25" stroke="#3b0764" stroke-width="3" stroke-linecap="round" />
+                        <path d="M53 18 Q65 20 77 21" stroke="#22c55e" stroke-width="3" fill="none" /> <!-- 녹색 띠 -->
+
+                        <!-- 얼굴 (주황색 색연필 느낌) -->
+                        <ellipse cx="43" cy="40" rx="26" ry="22" fill="#ea580c" stroke="#451a03" stroke-width="2.5" />
+                        <path d="M25 35 Q43 25 60 38 M22 42 Q43 32 62 43" stroke="#c2410c" stroke-width="1.5" opacity="0.6" fill="none" />
+
+                        <!-- 눈 & 표정 (괴오박사 특유의 장난기/사악함) -->
+                        <path d="M28 30 L40 33" stroke="#1c1917" stroke-width="3" stroke-linecap="round" />
+                        <path d="M48 33 L60 31" stroke="#1c1917" stroke-width="3" stroke-linecap="round" />
+                        <ellipse cx="34" cy="36" rx="4" ry="5" fill="#fef08a" stroke="#1c1917" stroke-width="1.5" />
+                        <circle cx="34" cy="36" r="1.5" fill="#1c1917" />
+                        <ellipse cx="54" cy="37" rx="4" ry="5" fill="#fef08a" stroke="#1c1917" stroke-width="1.5" />
+                        <circle cx="54" cy="37" r="1.5" fill="#1c1917" />
+
+                        <!-- 이빨이 보이는 웃는 입 -->
+                        <path d="M30 48 Q43 58 58 47 Z" fill="#ffffff" stroke="#1c1917" stroke-width="2" />
+                        <path d="M37 49 L37 54 M44 50 L44 55 M51 49 L51 53" stroke="#1c1917" stroke-width="1.5" />
+
+                        <!-- 몸통 (보라 코트) -->
+                        <path d="M28 60 L18 88 L68 88 L58 60 Z" fill="#3b0764" stroke="#1e1b4b" stroke-width="2.5" />
+                        <path d="M38 60 L32 88 M48 60 L54 88" stroke="#581c87" stroke-width="2" />
+
+                        <!-- 넥타이 (초록색) -->
+                        <path d="M40 60 L46 60 L45 82 L43 85 L41 82 Z" fill="#16a34a" stroke="#14532d" stroke-width="1.5" />
+
+                        <!-- 손 (주황색) -->
+                        <circle cx="15" cy="72" r="4.5" fill="#ea580c" stroke="#451a03" stroke-width="1.5" />
+                        <circle cx="70" cy="72" r="4.5" fill="#ea580c" stroke="#451a03" stroke-width="1.5" />
+
+                        <!-- 다리 & 신발 -->
+                        <path d="M32 88 L32 102 M54 88 L54 102" stroke="#1c1917" stroke-width="3" />
+                        <ellipse cx="30" cy="103" rx="5" ry="3" fill="#1c1917" />
+                        <ellipse cx="56" cy="103" rx="5" ry="3" fill="#1c1917" />
+                    </g>
+                </svg>
+            `;
+
+            enemyElem.style.left = `${enemyX}px`;
+            enemyElem.style.top = `${enemyY}px`;
+            gameScreen.appendChild(enemyElem);
+
+            enemies.push({
+                element: enemyElem,
+                x: enemyX,
+                y: enemyY,
+                width: enemyWidth,
+                height: enemyHeight
+            });
+        }
+
+        function isColliding(r1, r2) {
+            return (
+                r1.x < r2.x + r2.width &&
+                r1.x + r1.width > r2.x &&
+                r1.y < r2.y + r2.height &&
+                r1.y + r1.height > r2.y
+            );
+        }
+
+        function triggerGameOver() {
+            isGameOver = true;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function restartGame() {
+            bullets.forEach(b => b.element.remove());
+            bullets.length = 0;
+
+            enemies.forEach(e => e.element.remove());
+            enemies.length = 0;
+
+            score = 0;
+            scoreText.textContent = score;
+
+            playerX = (gameScreen.clientWidth - airplaneWidth) / 2;
+            playerY = gameScreen.clientHeight - airplaneHeight - 30;
+
+            isGameOver = false;
+            gameOverScreen.classList.add('hidden');
+
+            lastEnemySpawnTime = performance.now();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameLoop(timestamp = 0) {
+            if (isGameOver) return;
+
+            const screenWidth = gameScreen.clientWidth;
+            const screenHeight = gameScreen.clientHeight;
+
+            // 플레이어 이동
+            if (keys.ArrowLeft) playerX -= speed;
+            if (keys.ArrowRight) playerX += speed;
+            if (keys.ArrowUp) playerY -= speed;
+            if (keys.ArrowDown) playerY += speed;
+
+            playerX = Math.max(0, Math.min(screenWidth - airplaneWidth, playerX));
+            playerY = Math.max(0, Math.min(screenHeight - airplaneHeight, playerY));
+
+            playerAirplane.style.left = `${playerX}px`;
+            playerAirplane.style.top = `${playerY}px`;
+
+            // 총알 발사 생성
+            if (keys.Space && timestamp - lastShootTime > shootInterval) {
+                createBullet();
+                lastShootTime = timestamp;
+            }
+
+            // 2초마다 적 생성
+            if (timestamp - lastEnemySpawnTime > spawnInterval) {
+                createEnemy();
+                lastEnemySpawnTime = timestamp;
+            }
+
+            // 1. 총알 이동 및 영역 이탈 처리
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.y -= bulletSpeed;
+                bullet.element.style.top = `${bullet.y}px`;
+
+                if (bullet.y < -20) {
+                    bullet.element.remove();
+                    bullets.splice(i, 1);
+                }
+            }
+
+            const playerBox = {
+                x: playerX + 15,
+                y: playerY + 15,
+                width: airplaneWidth - 30,
+                height: airplaneHeight - 30
+            };
+
+            // 2. 적 이동 및 충돌 판정 처리
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.y += enemySpeed;
+                enemy.element.style.top = `${enemy.y}px`;
+
+                // 총알과의 충돌 체크
+                let enemyHit = false;
+                for (let j = bullets.length - 1; j >= 0; j--) {
+                    const bullet = bullets[j];
+                    if (isColliding(bullet, enemy)) {
+                        bullet.element.remove();
+                        bullets.splice(j, 1);
+                        
+                        enemy.element.remove();
+                        enemies.splice(i, 1);
+
+                        score += 10;
+                        scoreText.textContent = score;
+
+                        enemyHit = true;
+                        break;
+                    }
+                }
+
+                if (enemyHit) continue;
+
+                // 적이 화면 아래 끝까지 내려옴 -> 게임 오버
+                if (enemy.y + enemy.height >= screenHeight) {
+                    triggerGameOver();
+                    return;
+                }
+
+                // 적이 플레이어와 부딪힘 -> 게임 오버
+                if (isColliding(enemy, playerBox)) {
+                    triggerGameOver();
+                    return;
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 초기 실행
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
